@@ -122,6 +122,13 @@
     </select>
   </div>
   <div class="field">
+    <label>Color theme</label>
+    <select id="colorTheme">
+      <option value="0">Color</option>
+      <option value="1">Monochrome (teal)</option>
+    </select>
+  </div>
+  <div class="field">
     <label>Time format</label>
     <select id="timeFormat">
       <option value="0">Auto (system)</option>
@@ -147,7 +154,7 @@
 
     var DEFAULTS = {
       stepsGoal: 10000, zoneGoal: 22, calGoal: 600, sleepGoal: 8,
-      units: 0, hrMode: 0, updateMin: 15, bgStyle: 0, timeFormat: 0
+      units: 0, hrMode: 0, updateMin: 15, bgStyle: 0, timeFormat: 0, colorTheme: 0
     };
 
     var dot           = document.getElementById('dot');
