@@ -129,6 +129,13 @@
     </select>
   </div>
   <div class="field">
+    <label>Ring layout</label>
+    <select id="ringStyle">
+      <option value="1">Arc ring</option>
+      <option value="0">Classic</option>
+    </select>
+  </div>
+  <div class="field">
     <label>Time format</label>
     <select id="timeFormat">
       <option value="0">Auto (system)</option>
@@ -154,7 +161,7 @@
 
     var DEFAULTS = {
       stepsGoal: 10000, zoneGoal: 22, calGoal: 600, sleepGoal: 8,
-      units: 0, hrMode: 0, updateMin: 15, bgStyle: 0, timeFormat: 0, colorTheme: 0
+      units: 0, hrMode: 0, updateMin: 15, bgStyle: 0, timeFormat: 0, colorTheme: 0, ringStyle: 1
     };
 
     var dot           = document.getElementById('dot');
