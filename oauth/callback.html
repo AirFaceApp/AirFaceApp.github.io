@@ -28,14 +28,10 @@
 <body>
   <div class="icon" id="icon">⏳</div>
   <h2 id="heading">Connecting…</h2>
-  <p id="msg">Exchanging authorization code with Google Health.</p>
+  <p id="msg">Exchanging authorization code with Google.</p>
 
   <script>
-    // URL of the Cloudflare Worker that holds the client secret.
-    // Set WORKER_URL in src/pkjs/config.js — this page reads it from
-    // localStorage so it never appears in public source code.
-    var WORKER_URL = localStorage.getItem('airface_worker_url') ||
-                     'https://airface-worker.james-m-brock.workers.dev';
+    var REDIRECT_URI = 'https://airfaceapp.github.io/oauth/callback.html';
 
     function showError(text) {
       document.body.className = 'error';
@@ -68,20 +64,31 @@
       }
       localStorage.removeItem('airface_code_verifier');
 
-      if (!WORKER_URL) {
-        showError('Worker URL not configured. Check PKJS config.');
+      var clientId     = localStorage.getItem('airface_client_id');
+      var clientSecret = localStorage.getItem('airface_client_secret');
+      if (!clientId || !clientSecret) {
+        showError('Client credentials not found — enter your Client ID and Secret in AirFace settings and try again.');
         return;
       }
 
       try {
-        var resp = await fetch(WORKER_URL + '/exchange', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code, code_verifier: codeVerifier })
+        var body = new URLSearchParams({
+          code:          code,
+          client_id:     clientId,
+          client_secret: clientSecret,
+          redirect_uri:  REDIRECT_URI,
+          grant_type:    'authorization_code',
+          code_verifier: codeVerifier
         });
 
-        if (!resp.ok) throw new Error('Worker returned ' + resp.status);
+        var resp = await fetch('https://oauth2.googleapis.com/token', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    body.toString()
+        });
+
         var tokens = await resp.json();
+        if (!resp.ok) throw new Error(tokens.error_description || tokens.error || 'token exchange failed');
 
         if (!tokens.refresh_token) {
           throw new Error('No refresh token — re-authorize with prompt=consent');
@@ -89,10 +96,6 @@
 
         showSuccess();
 
-        // Desktop browser (not a Pebble webview). The token is only revealed
-        // when a developer explicitly opts in — run
-        //   localStorage.setItem('airface_dev', '1')
-        // in the console before connecting. Otherwise no secret is shown.
         var isPebble = navigator.userAgent.indexOf('Pebble') !== -1 ||
                        window.location.href.indexOf('pebble') !== -1;
         if (!isPebble) {
@@ -107,7 +110,6 @@
           return;
         }
 
-        // Pass refresh token back to PKJS via the Pebble close URL scheme.
         setTimeout(function() {
           window.location = 'pebblejs://close#' +
             encodeURIComponent(JSON.stringify({ refresh_token: tokens.refresh_token }));

@@ -31,6 +31,7 @@
       transition: opacity .15s;
     }
     button:active { opacity: .75; }
+    button:disabled { opacity: .35; cursor: default; }
     #connect-btn    { background: #4285f4; color: #fff; }
     #disconnect-btn { background: #1e1e1e; color: #ff6b6b; display: none; }
     #save-btn       { background: #4caf50; color: #fff; margin-top: 8px; }
@@ -44,7 +45,9 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 0; border-bottom: 1px solid #222;
     }
+    .field.stacked { flex-direction: column; align-items: flex-start; gap: 6px; }
     .field label { font-size: 15px; color: #ddd; }
+    .field .sublabel { font-size: 12px; color: #555; }
     .field .accent { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
     .acc-steps { background: #4caf50; }
     .acc-zone  { background: #ffeb3b; }
@@ -57,6 +60,21 @@
       font-size: 15px; text-align: right;
     }
     .field select { text-align: left; }
+    .field input[type=text], .field input[type=password] {
+      width: 100%; padding: 9px 10px;
+      background: #1e1e1e; color: #fff;
+      border: 1px solid #333; border-radius: 8px;
+      font-size: 13px; font-family: monospace;
+    }
+    .setup-steps {
+      font-size: 12px; color: #666; line-height: 1.8;
+      margin-bottom: 4px; padding-left: 4px;
+    }
+    .setup-steps a { color: #4285f4; text-decoration: none; }
+    #creds-warn {
+      font-size: 12px; color: #ff9800;
+      margin-bottom: 10px; display: none;
+    }
   </style>
 </head>
 <body>
@@ -68,7 +86,27 @@
     <span id="status-text">Checking...</span>
   </div>
 
-  <button id="connect-btn">Connect Google Health</button>
+  <div class="section-title">Google Cloud credentials</div>
+  <p class="setup-steps">
+    1. Go to <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a><br>
+    2. Create a project → enable <strong>Google Health API</strong><br>
+    3. APIs &amp; Services → Credentials → Create OAuth client (Web application)<br>
+    4. Add redirect URI: <code style="color:#4caf50;font-size:11px">https://airfaceapp.github.io/oauth/callback.html</code><br>
+    5. Paste your Client ID and Client Secret below
+  </p>
+
+  <div class="field stacked" style="margin-top:12px">
+    <label>Client ID</label>
+    <input type="text" id="clientId" placeholder="…apps.googleusercontent.com" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+  </div>
+  <div class="field stacked">
+    <label>Client Secret</label>
+    <input type="password" id="clientSecret" placeholder="GOCSPX-…" autocomplete="off">
+  </div>
+
+  <p id="creds-warn">Enter your Client ID and Client Secret before connecting.</p>
+
+  <button id="connect-btn" style="margin-top:20px">Connect Google Health</button>
   <button id="disconnect-btn">Disconnect</button>
 
   <div class="section-title">Daily goals</div>
@@ -151,7 +189,6 @@
   </p>
 
   <script>
-    var CLIENT_ID    = '1088228830683-ooiegal7q06otkh0bj5n9jeqvqgc8c12.apps.googleusercontent.com';
     var REDIRECT_URI = 'https://airfaceapp.github.io/oauth/callback.html';
     var SCOPES = [
       'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
@@ -169,8 +206,18 @@
     var connectBtn    = document.getElementById('connect-btn');
     var disconnectBtn = document.getElementById('disconnect-btn');
     var saveBtn       = document.getElementById('save-btn');
+    var clientIdEl    = document.getElementById('clientId');
+    var clientSecretEl = document.getElementById('clientSecret');
+    var credsWarn     = document.getElementById('creds-warn');
 
     var params = new URLSearchParams(window.location.search);
+
+    // ── Prefill credentials from PKJS (clientId only — secret never round-trips) ─
+    var prefillId = params.get('clientId');
+    if (prefillId) clientIdEl.value = prefillId;
+    // If secret is in localStorage (same origin as callback.html), prefill it too
+    var storedSecret = localStorage.getItem('airface_client_secret');
+    if (storedSecret) clientSecretEl.value = storedSecret;
 
     // ── Connection status ──────────────────────────────────────────────────────
     if (params.get('connected') === '1') {
@@ -183,7 +230,7 @@
       statusText.textContent = 'Not connected';
     }
 
-    // ── Prefill settings from the values PKJS passed in the URL ─────────────────
+    // ── Prefill settings ──────────────────────────────────────────────────────
     function fieldVal(id) { return document.getElementById(id); }
     Object.keys(DEFAULTS).forEach(function(key) {
       var v = params.get(key);
@@ -191,7 +238,7 @@
       fieldVal(key).value = v;
     });
 
-    // ── PKCE helpers ────────────────────────────────────────────────────────────
+    // ── PKCE helpers ──────────────────────────────────────────────────────────
     function generateVerifier() {
       var arr = new Uint8Array(96);
       crypto.getRandomValues(arr);
@@ -206,13 +253,24 @@
       });
     }
 
-    // ── Connect ─────────────────────────────────────────────────────────────────
+    // ── Connect ───────────────────────────────────────────────────────────────
     connectBtn.addEventListener('click', function() {
+      var clientId     = clientIdEl.value.trim();
+      var clientSecret = clientSecretEl.value.trim();
+      if (!clientId || !clientSecret) {
+        credsWarn.style.display = 'block';
+        return;
+      }
+      credsWarn.style.display = 'none';
+      // Persist credentials in localStorage so callback.html can reach them
+      localStorage.setItem('airface_client_id',     clientId);
+      localStorage.setItem('airface_client_secret', clientSecret);
+
       var verifier = generateVerifier();
       generateChallenge(verifier).then(function(challenge) {
         localStorage.setItem('airface_code_verifier', verifier);
         var url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        url.searchParams.set('client_id',             CLIENT_ID);
+        url.searchParams.set('client_id',             clientId);
         url.searchParams.set('redirect_uri',          REDIRECT_URI);
         url.searchParams.set('response_type',         'code');
         url.searchParams.set('scope',                 SCOPES);
@@ -224,21 +282,30 @@
       });
     });
 
-    // ── Disconnect ────────────────────────────────────────────────────────────────
+    // ── Disconnect ────────────────────────────────────────────────────────────
     disconnectBtn.addEventListener('click', function() {
       window.location = 'pebblejs://close#' +
         encodeURIComponent(JSON.stringify({ disconnect: true }));
     });
 
-    // ── Save settings ─────────────────────────────────────────────────────────────
+    // ── Save settings ─────────────────────────────────────────────────────────
     saveBtn.addEventListener('click', function() {
+      var clientId     = clientIdEl.value.trim();
+      var clientSecret = clientSecretEl.value.trim();
       var settings = {};
       Object.keys(DEFAULTS).forEach(function(key) {
         var n = parseInt(fieldVal(key).value, 10);
         settings[key] = isNaN(n) ? DEFAULTS[key] : n;
       });
+      var payload = { settings: settings };
+      if (clientId && clientSecret) {
+        payload.clientId     = clientId;
+        payload.clientSecret = clientSecret;
+        localStorage.setItem('airface_client_id',     clientId);
+        localStorage.setItem('airface_client_secret', clientSecret);
+      }
       window.location = 'pebblejs://close#' +
-        encodeURIComponent(JSON.stringify({ settings: settings }));
+        encodeURIComponent(JSON.stringify(payload));
     });
   </script>
 </body>
